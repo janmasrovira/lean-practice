@@ -5,6 +5,7 @@ defaultTargets = ["LeanPractice"]
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
+pp.fieldNotation = false
 autoImplicit = false
 
 [[require]]
