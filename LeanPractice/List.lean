@@ -195,9 +195,8 @@ lemma myinsert_head [LinearOrder A] [cmp : DecidableLE A] {a : List A} {new : A}
       simp
 
 theorem insertSorted
-  [LinearOrder A] [cmp : DecidableLE A] (a : List A)
-  (p : Sorted a)
-  {new : A} : Sorted (myinsert new a p) := by
+  [LinearOrder A] [cmp : DecidableLE A]
+  (a : List A) (p : Sorted a) {new : A} : Sorted (myinsert new a p) := by
   induction a
   case nil =>
     simp
@@ -224,3 +223,20 @@ theorem insertSorted
       constructor
       assumption
       assumption
+
+@[reducible]
+def insertionSort [LinearOrder A] [cmp : DecidableLE A] (a : List A) : List A :=
+  let rec @[reducible] go (acc : List A) (s : Sorted acc) (rem : List A) : List A := match rem with
+         | [] => acc
+         | cons x xs => go (myinsert x acc s) (insertSorted acc s) xs
+  go [] True.intro a
+
+theorem insertionSort_sorted [LinearOrder A] [cmp : DecidableLE A] (a : List A) :
+ Sorted (insertionSort a) := by
+   rw [insertionSort]
+   have goSorted (acc : List A) (p : Sorted acc) (l : List A) : Sorted (insertionSort.go acc p l) := by
+         induction l generalizing acc
+         case nil => assumption
+         case cons b bs ih => apply ih (myinsert b acc p) (insertSorted acc p)
+
+   apply goSorted
