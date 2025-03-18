@@ -183,8 +183,8 @@ lemma myinsert_head [LinearOrder A] [cmp : DecidableLE A] {a : List A} {new : A}
   : ∃ newHead : A, ∃ l : List A,
     newHead :: l = myinsert new a s ∧
     ((new = newHead ∧ l = a) ∨ newHead ∈ a) := by
-  induction a; simp
-  case cons head tail ih =>
+  cases a; simp
+  case cons head tail =>
     unfold myinsert
     cases cmp new head; simp
     case isFalse hfalse =>
@@ -240,3 +240,63 @@ theorem insertionSort_sorted [LinearOrder A] [cmp : DecidableLE A] (a : List A) 
          case cons b bs ih => apply ih (myinsert b acc p) (insertSorted acc p)
 
    apply goSorted
+
+theorem insertPerm [le : LE A] [ord : DecidableLE A]
+  (p : Sorted a)
+  : Perm (x :: a) (myinsert x a p) := by
+        induction a generalizing x
+        case nil => simp
+        case cons y ys ih =>
+          unfold myinsert
+          cases ord x y
+          case isFalse =>
+            have pp := Perm.cons y (ih (x := x) (sortedTail p))
+            calc x :: y :: ys
+              _ ~ y :: x :: ys := by apply Perm.swap
+              _ ~ y :: (myinsert x ys (sortedTail p)) := pp
+          case isTrue => simp
+
+-- TODO generalize a ~ a'
+theorem perm_cat (a b b' : List A) (p : b ~ b') : (a <> b) ~ (a <> b') := by
+  induction a
+  case nil =>
+    simp
+    assumption
+  case cons x xs ih =>
+    apply Perm.cons
+    assumption
+
+theorem insertionSort_perm [LinearOrder A] [cmp : DecidableLE A] (a : List A) :
+   a ~ insertionSort a := by
+   rw [insertionSort]
+   have goLemma (acc : List A) (s : Sorted acc) (rem : List A) :
+        (rem <> acc) ~ insertionSort.go acc s rem := by
+        induction rem generalizing acc
+        case nil => simp
+        case cons y ys ih =>
+          unfold insertionSort.go
+          apply Perm.symm
+          have sacc : Sorted (myinsert y acc s) := insertSorted acc s
+          calc insertionSort.go (myinsert y acc s) sacc ys
+            _ ~ (ys <> myinsert y acc s) := Perm.symm (ih (myinsert y acc s) sacc)
+            _ ~ (ys <> y :: acc) := by
+                apply perm_cat
+                apply (Perm.symm (insertPerm s))
+            _ ~ (y :: (ys <> acc)) := by apply perm_middle
+
+   have l := goLemma [] True.intro a
+   rw [cat_nil_r] at l
+   apply l
+
+structure SortingAlgorithm (A : Type) [LinearOrder A] [DecidableLE A] where
+  sort : List A -> List A
+  sort_perm : ∀ (l : List A), Perm l (sort l)
+  sort_sorted : ∀ (l : List A), Sorted (sort l)
+
+def insertionSortAlgorithm [LinearOrder A] [DecidableLE A] : SortingAlgorithm A :=
+  {
+  sort := insertionSort ,
+  sort_perm := insertionSort_perm ,
+  sort_sorted := insertionSort_sorted
+  : SortingAlgorithm A
+  }
