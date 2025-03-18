@@ -145,78 +145,82 @@ def sortedTail [LE A] (p : Sorted (x :: a)) : Sorted a :=
 def myinsert [le : LE A] [ord : DecidableLE A] (new : A) (a : List A) (sorted : Sorted a) : List A :=
   match a with
     | [] => [new]
-    | (x :: xs) => match ord new x with
+    | x :: xs => match ord new x with
       | isTrue _ => new :: x :: xs
       | isFalse _ => x :: myinsert new xs (sortedTail sorted)
 
-theorem sorted_le_all [Preorder A] {a : List A} (p : Sorted (x :: a))
-  : All (λ e => x ≤ e) a := by
-  induction a
-  case nil => simp
-  case cons y ys ih =>
-    simp at p
-    rcases p with ⟨h1, h2⟩
-    simp
-    refine (And.intro h1 ?_)
-    apply ih
-    cases ys
-    case intro.nil => simp
-    case intro.cons z zs =>
-      rcases h2 with ⟨yz, sortedz⟩
-      simp
-      constructor
-      case intro.left =>
-        exact Preorder.le_trans x y z h1 yz
-      case intro.right =>
+theorem sorted_le_all [Preorder A] {a : List A}
+  {s : Sorted (x :: a)}
+  (mem : y ∈ x :: a)
+  : x ≤ y := by
+  induction a generalizing x
+  case nil =>
+    simp at mem
+    rw [mem]
+  case cons w ys ih =>
+    simp at mem s
+    rcases s with ⟨xw, sor⟩
+    rcases mem with eq | eq | eq
+    case inl =>
+      rw [eq]
+    case inr.inl =>
+      rw [eq]
+      assumption
+    case intro.inr.inr =>
+      have wy : w ≤ y := by
+        apply ih
+        assumption
+        case mem m =>
+          right
+          assumption
+      next =>
+        apply Preorder.le_trans
+        apply xw
         assumption
 
+lemma myinsert_head [LinearOrder A] [cmp : DecidableLE A] {a : List A} {new : A}
+  (s : Sorted a)
+  : ∃ newHead : A, ∃ l : List A,
+    newHead :: l = myinsert new a s ∧
+    ((new = newHead ∧ l = a) ∨ newHead ∈ a) := by
+  induction a; simp
+  case cons head tail ih =>
+    unfold myinsert
+    cases cmp new head; simp
+    case isFalse hfalse =>
+      exists head, (myinsert new tail (sortedTail s))
+      simp
+    case isTrue =>
+      exists new, (head :: tail)
+      simp
+
 theorem insertSorted
-  [ord : LinearOrder A] (a : List A)
+  [LinearOrder A] [cmp : DecidableLE A] (a : List A)
   (p : Sorted a)
   {new : A} : Sorted (myinsert new a p) := by
   induction a
   case nil =>
     simp
-  case cons x xs h =>
+  case cons x xs ind =>
+    obtain ⟨newHead, newTail, ⟨eq, or⟩⟩ := myinsert_head (new := new) (sortedTail p)
+    specialize ind (sortedTail p)
     unfold myinsert
-    cases le_total new x
-    case inl le =>
-      cases instDecidableLe_mathlib new x
-      case isFalse => contradiction
-      case isTrue =>
-        simp
-        exact (And.intro le p)
-    case inr le =>
-      cases instDecidableLe_mathlib new x
-      case isTrue t =>
-        simp
-        exact (And.intro t p)
-      case isFalse =>
-        simp
-        have sTail := h (sortedTail p)
-        let tail := myinsert new xs (sortedTail p)
-        cases xs
-        case nil =>
-          simp
-          assumption
-        case cons hd tl =>
-          unfold myinsert
-          cases le_total new hd
-          case inl =>
-            cases instDecidableLe_mathlib new hd
-            case isFalse _ => contradiction
-            case isTrue newhd =>
-              simp
-              exact (And.intro le (And.intro newhd (sortedTail p)))
-          case inr ww =>
-            cases instDecidableLe_mathlib new hd
-            case isTrue newhd =>
-              simp
-              exact (And.intro le (And.intro newhd (sortedTail p)))
-            case isFalse newhd =>
-              simp
-              rcases p with ⟨p1, _⟩
-              refine (And.intro p1 ?_)
-
-
-               -- simp [myinsert] at sTail
+    cases cmp new x; simp
+    next neq =>
+      rw [<- eq] at *
+      cases or; simp
+      case inl h =>
+       obtain ⟨eq1, newTailxs⟩ := h
+       rw [<- eq1] at ind ⊢
+       constructor
+       exact le_of_not_ge neq
+       assumption
+      case inr mem =>
+       simp
+       constructor
+       apply sorted_le_all (s := p) (mem_cons_of_mem x mem)
+       apply ind
+    next h =>
+      constructor
+      assumption
+      assumption
