@@ -58,8 +58,7 @@ def reverseGo (acc : List A) (d : List A) : List A := match d with
 def reverse : List A -> List A :=
  reverseGo nil
 
-
-theorem reverseGo_cons : reverseGo lacc (x :: a) = cat (reverse a) (x :: lacc) := by
+theorem reverseGo_cons : reverseGo lacc (x :: a) = (reverse a <> x :: lacc) := by
   induction a generalizing x lacc
   case nil =>
     rfl
@@ -309,9 +308,36 @@ theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
     let (left, right) := split (x :: l)
     (∀ y ∈ left, y ≤ x) ∧ (∀ y ∈ right, x < y) := by
     induction l
-    case nil => sorry
-    case cons z zx ih =>
+    case nil =>
+      simp
+      constructor
+      case left =>
+        intro y h
+        rw [split, partition_eq_filter_filter] at h
+        simp at h
+        exact le_of_eq h
+      case right =>
+        intro y h
+        rw [split, partition_eq_filter_filter] at h
+        simp at h
+    case cons z zs ih =>
       simp at ih ⊢
       obtain ⟨ih1, ih2⟩ := ih
       constructor; intros w p
       case left =>
+        rw [split, partition_eq_filter_filter] at p
+        simp at p
+        rcases p with h1 | h2
+        case inl => apply le_of_eq h1
+        case inr => apply And.right h2
+      case intro.right =>
+        intro y
+        rw [split, partition_eq_filter_filter]
+        simp
+
+def merge [LE A] [DecidableLE A] (a b : List A) : List A := match a, b with
+  | [], b => b
+  | a, [] => a
+  | (x :: xs), (y :: ys) => if x ≤ y
+    then x :: merge xs (y :: ys)
+    else y :: merge (x :: xs) ys
