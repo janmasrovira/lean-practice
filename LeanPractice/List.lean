@@ -225,13 +225,13 @@ theorem insertSorted
       assumption
 
 @[reducible]
-def insertionSort [LinearOrder A] [cmp : DecidableLE A] (a : List A) : List A :=
+def insertionSort [LinearOrder A] (a : List A) : List A :=
   let rec @[reducible] go (acc : List A) (s : Sorted acc) (rem : List A) : List A := match rem with
          | [] => acc
          | cons x xs => go (myinsert x acc s) (insertSorted acc s) xs
   go [] True.intro a
 
-theorem insertionSort_sorted [LinearOrder A] [cmp : DecidableLE A] (a : List A) :
+theorem insertionSort_sorted [LinearOrder A] (a : List A) :
  Sorted (insertionSort a) := by
    rw [insertionSort]
    have goSorted (acc : List A) (p : Sorted acc) (l : List A) : Sorted (insertionSort.go acc p l) := by
@@ -266,7 +266,7 @@ theorem perm_cat (a b b' : List A) (p : b ~ b') : (a <> b) ~ (a <> b') := by
     apply Perm.cons
     assumption
 
-theorem insertionSort_perm [LinearOrder A] [cmp : DecidableLE A] (a : List A) :
+theorem insertionSort_perm [LinearOrder A] (a : List A) :
    a ~ insertionSort a := by
    rw [insertionSort]
    have goLemma (acc : List A) (s : Sorted acc) (rem : List A) :
@@ -288,15 +288,30 @@ theorem insertionSort_perm [LinearOrder A] [cmp : DecidableLE A] (a : List A) :
    rw [cat_nil_r] at l
    apply l
 
-structure SortingAlgorithm (A : Type) [LinearOrder A] [DecidableLE A] where
+structure SortingAlgorithm (A : Type) [LinearOrder A] where
   sort : List A -> List A
   sort_perm : ∀ (l : List A), Perm l (sort l)
   sort_sorted : ∀ (l : List A), Sorted (sort l)
 
-def insertionSortAlgorithm [LinearOrder A] [DecidableLE A] : SortingAlgorithm A :=
+def insertionSortAlgorithm [LinearOrder A] : SortingAlgorithm A :=
   {
   sort := insertionSort ,
   sort_perm := insertionSort_perm ,
   sort_sorted := insertionSort_sorted
   : SortingAlgorithm A
   }
+
+def split [LinearOrder A] : List A -> List A × List A
+  | [] => ([] , [])
+  | x :: l => partition (fun y => y ≤ x) (x :: l)
+
+theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
+    let (left, right) := split (x :: l)
+    (∀ y ∈ left, y ≤ x) ∧ (∀ y ∈ right, x < y) := by
+    induction l
+    case nil => sorry
+    case cons z zx ih =>
+      simp at ih ⊢
+      obtain ⟨ih1, ih2⟩ := ih
+      constructor; intros w p
+      case left =>
