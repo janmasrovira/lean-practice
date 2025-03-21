@@ -5,7 +5,7 @@ variable {A : Type}
 variable {x y z : A}
 variable {a a' b b' c c' lacc : List A}
 
-open List hiding reverse reverse_cons perm_middle insert
+open List hiding reverse reverse_cons perm_middle insert merge
 
 def cat (a b : List A) : List A := match a with
   | nil => b
@@ -279,8 +279,8 @@ theorem insertionSort_perm [LinearOrder A] (a : List A) :
           calc insertionSort.go (myinsert y acc s) sacc ys
             _ ~ (ys <> myinsert y acc s) := Perm.symm (ih (myinsert y acc s) sacc)
             _ ~ (ys <> y :: acc) := by
-                apply perm_cat
-                apply (Perm.symm (insertPerm s))
+                                  apply perm_cat
+                                  apply (Perm.symm (insertPerm s))
             _ ~ (y :: (ys <> acc)) := by apply perm_middle
 
    have l := goLemma [] True.intro a
@@ -304,6 +304,7 @@ def split [LinearOrder A] : List A -> List A × List A
   | [] => ([] , [])
   | x :: l => partition (fun y => y ≤ x) (x :: l)
 
+-- TODO simplify
 theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
     let (left, right) := split (x :: l)
     (∀ y ∈ left, y ≤ x) ∧ (∀ y ∈ right, x < y) := by
@@ -335,9 +336,66 @@ theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
         rw [split, partition_eq_filter_filter]
         simp
 
+@[reducible]
 def merge [LE A] [DecidableLE A] (a b : List A) : List A := match a, b with
   | [], b => b
   | a, [] => a
   | (x :: xs), (y :: ys) => if x ≤ y
     then x :: merge xs (y :: ys)
     else y :: merge (x :: xs) ys
+
+-- TODO simplify
+def merge_sorted [LinearOrder A] (sa : Sorted a) (sb : Sorted b) : Sorted (merge a b) := by
+  induction a generalizing b
+  case nil =>
+    rw [merge]
+    assumption
+  case cons x xs ih =>
+    induction b generalizing xs
+    case nil =>
+      unfold merge
+      assumption
+    case cons y ys ih2 =>
+      unfold merge
+      split
+      case isTrue h =>
+        specialize @ih (y :: ys) (sortedTail sa)
+        cases xs
+        case nil =>
+          unfold merge at *
+          unfold Sorted
+          exact ⟨h, sb⟩
+        case cons u us =>
+          unfold merge at *
+          split
+          case isTrue =>
+            simp [*] at ih
+            simp [*]
+          case isFalse h2 =>
+            simp [*] at ih
+            exact ⟨h, ih⟩
+      case isFalse h =>
+        have h1 : y ≤ x := le_of_not_ge h
+        cases ys
+        case nil =>
+          unfold merge
+          exact  ⟨h1, sa⟩
+        case cons z zs =>
+          unfold merge
+          split
+          case isTrue h2 =>
+            specialize ih2 xs ih sa (sortedTail sb)
+            constructor
+            assumption
+            unfold merge at ih2
+            simp [*] at ih2
+            assumption
+          case isFalse h2 =>
+            have h2' : z < x := lt_of_not_ge h2
+            specialize ih2 xs ih sa (sortedTail sb)
+            unfold merge at ih2
+            simp [*] at ih2
+            constructor
+            cases sb
+            assumption
+            assumption
