@@ -255,8 +255,18 @@ theorem insertPerm [le : LE A] [ord : DecidableLE A]
               _ ~ y :: (myinsert x ys (sortedTail p)) := pp
           case isTrue => simp
 
--- TODO generalize a ~ a'
-theorem perm_cat (a b b' : List A) (p : b ~ b') : (a <> b) ~ (a <> b') := by
+theorem perm_cat_left {a a' b : List A} (pa : a ~ a') : (a <> b) ~ (a' <> b) := by
+  induction b
+  case nil =>
+    iterate 2 (rw [cat_nil_r])
+    assumption
+  case cons x xs ih =>
+    calc (a <> x :: xs)
+    _ ~ x :: (a <> xs) := by apply perm_middle
+    _ ~ x :: (a' <> xs) := by exact Perm.cons x ih
+    _ ~ (a' <> x :: xs) := by apply (Perm.symm perm_middle)
+
+theorem perm_cat_right {a b b' : List A} (pb : b ~ b') : (a <> b) ~ (a <> b') := by
   induction a
   case nil =>
     simp
@@ -264,6 +274,12 @@ theorem perm_cat (a b b' : List A) (p : b ~ b') : (a <> b) ~ (a <> b') := by
   case cons x xs ih =>
     apply Perm.cons
     assumption
+
+
+theorem perm_cat {a a' b b' : List A} (pa : a ~ a') (pb : b ~ b') : (a <> b) ~ (a' <> b') := by
+    calc (a <> b)
+    _ ~ (a' <> b) := by apply (perm_cat_left pa)
+    _ ~ (a' <> b') := by apply (perm_cat_right pb)
 
 theorem insertionSort_perm [LinearOrder A] (a : List A) :
    a ~ insertionSort a := by
@@ -279,7 +295,7 @@ theorem insertionSort_perm [LinearOrder A] (a : List A) :
           calc insertionSort.go (myinsert y acc s) sacc ys
             _ ~ (ys <> myinsert y acc s) := Perm.symm (ih (myinsert y acc s) sacc)
             _ ~ (ys <> y :: acc) := by
-                                  apply perm_cat
+                                  apply perm_cat_right
                                   apply (Perm.symm (insertPerm s))
             _ ~ (y :: (ys <> acc)) := by apply perm_middle
 
@@ -309,6 +325,14 @@ def split [LinearOrder A] (pivot : A) (l : List A) : List A × List A
 --     unfold split
 --     rw [partition_eq_filter_filter]
 --     constructor <;> simp
+
+@[reducible]
+def merge_helper (cmp : A -> A -> Bool) (a b : List A) : List A := match a, b with
+  | [], b => b
+  | a, [] => a
+  | (x :: xs), (y :: ys) => if cmp x y
+    then x :: merge_helper cmp xs (y :: ys)
+    else y :: merge_helper cmp (x :: xs) ys
 
 @[reducible]
 def merge [LE A] [DecidableLE A] (a b : List A) : List A := match a, b with
@@ -374,8 +398,9 @@ def merge_sorted [LinearOrder A] (sa : Sorted a) (sb : Sorted b) : Sorted (merge
             assumption
             assumption
 
-lemma merge_perm [LinearOrder A] (sa : Sorted a) (sb : Sorted b)
-   : (a <> b) ~ (merge a b) := by
+lemma merge_perm [LinearOrder A]
+   : (merge a b) ~ (a <> b) := by
+   apply Perm.symm
    induction a generalizing b
    case nil =>
      unfold merge
@@ -390,10 +415,8 @@ lemma merge_perm [LinearOrder A] (sa : Sorted a) (sb : Sorted b)
        unfold merge
        split
        case isTrue x_le_y =>
-         specialize ih (sortedTail sa) sb
          simp [cat, ih]
        case isFalse x_ge_y =>
-         specialize ih2 (sortedTail sb)
          calc (x :: xs <> y :: ys)
           _ ~ y :: (x :: xs <> ys) := by apply perm_middle
          apply Perm.cons
@@ -437,8 +460,60 @@ def mergeSort [LinearOrder A] (d : List A) : List A :=
         omega
         }
 
+theorem filter_perm (f : A -> Bool) (a : List A)
+  : ((filter f a) <> (filter (not ∘ f) a)) ~ a
+  := by
+  induction a
+  case nil => simp
+  case cons x xs ih =>
+    unfold filter Function.comp
+    split
+    next isTrue =>
+      rw [isTrue]
+      simp
+      apply Perm.cons
+      apply ih
+    next isFalse =>
+      rw [isFalse]
+      simp
+      calc (filter f xs <> x :: filter (fun x ↦ !f x) xs)
+      _ ~ x :: (filter f xs <> filter (fun x ↦ !f x) xs) := by apply perm_middle
+      _ ~ x :: xs := by
+        apply Perm.cons
+        exact ih
+
 theorem mergeSort_perm [LinearOrder A] (d : List A) :
-  d ~ mergeSort d := by sorry
+  d ~ mergeSort d := by
+  apply WellFounded.induction sizeOfWFRel.wf d
+  intro ls ih
+  cases ls
+  case nil => rw [mergeSort]
+  case cons x xs =>
+    unfold mergeSort split
+    match eq : partition (fun y => decide (y ≤ x)) xs with
+     | (pl, pr) =>
+       rw [<- eq, partition_eq_filter_filter]
+       simp
+       apply Perm.symm
+       let ih2 {f : A -> Bool} : filter f xs ~ mergeSort (filter f xs) := by
+         apply ih (filter f xs)
+         calc sizeOf (filter f xs)
+          _ ≤ sizeOf xs := by exact filter_size f xs
+          _ < sizeOf (x :: xs) := by simp
+
+       calc merge (mergeSort (filter (fun y ↦ decide (y ≤ x)) xs)) (x :: mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs))
+         _ ~ ((mergeSort (filter (fun y ↦ decide (y ≤ x)) xs)) <> (x :: mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs))) :=
+                   by apply merge_perm
+         _ ~ x :: ((mergeSort (filter (fun y ↦ decide (y ≤ x)) xs)) <>
+                   (mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs))) :=
+                   by exact perm_middle
+         _ ~ x :: ((filter (fun y ↦ decide (y ≤ x)) xs) <>
+                   (filter (not ∘ fun y ↦ decide (y ≤ x)) xs)) := by
+                   apply Perm.cons
+                   apply Perm.symm (perm_cat ih2 ih2)
+         _ ~ x :: xs := by
+                   apply Perm.cons
+                   apply filter_perm
 
 theorem perm_mem (p : a ~ b) (m : x ∈ a) : x ∈ b := by
   induction p
@@ -482,11 +557,27 @@ theorem mergeSort_sorted [LinearOrder A] (d : List A)
           _ ≤ sizeOf xs := by apply filter_size
           _ < sizeOf (x :: xs) := by simp
       apply s1
-    have h2 : Sorted (x :: mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs)) := by
-
-         -- TODO use perm
-         -- mem_filter
-         sorry
+    have h2 : Sorted (x :: (mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs))) := by
+      have h21 : Sorted (mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs)) := by
+        apply ih
+        calc sizeOf (filter _ xs)
+          _ ≤ sizeOf xs := by apply filter_size
+          _ < sizeOf (x :: xs) := by simp
+      cases c : mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs)
+      simp
+      case cons z zx =>
+        rw [c] at h21
+        constructor
+        have zx : x < z := by
+          have zmem : z ∈ mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs) := by
+            rw [c]
+            simp
+          have zfilter : z ∈ filter (not ∘ fun y ↦ decide (y ≤ x)) xs := perm_mem (Perm.symm (mergeSort_perm _)) zmem
+          have xlez := And.right (Iff.mp mem_filter zfilter)
+          simp at xlez
+          assumption
+        exact le_of_lt zx
+        assumption
     apply merge_sorted
     assumption
     assumption
