@@ -5,7 +5,7 @@ variable {A : Type}
 variable {x y z : A}
 variable {a a' b b' c c' lacc : List A}
 
-open List hiding reverse reverse_cons perm_middle insert merge
+open List hiding reverse reverse_cons perm_middle insert merge mergeSort
 
 def cat (a b : List A) : List A := match a with
   | nil => b
@@ -300,41 +300,15 @@ def insertionSortAlgorithm [LinearOrder A] : SortingAlgorithm A :=
   : SortingAlgorithm A
   }
 
-def split [LinearOrder A] : List A -> List A × List A
-  | [] => ([] , [])
-  | x :: l => partition (fun y => y ≤ x) (x :: l)
+def split [LinearOrder A] (pivot : A) (l : List A) : List A × List A
+  := partition (fun y => y ≤ pivot) l
 
--- TODO simplify
-theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
-    let (left, right) := split (x :: l)
-    (∀ y ∈ left, y ≤ x) ∧ (∀ y ∈ right, x < y) := by
-    induction l
-    case nil =>
-      simp
-      constructor
-      case left =>
-        intro y h
-        rw [split, partition_eq_filter_filter] at h
-        simp at h
-        exact le_of_eq h
-      case right =>
-        intro y h
-        rw [split, partition_eq_filter_filter] at h
-        simp at h
-    case cons z zs ih =>
-      simp at ih ⊢
-      obtain ⟨ih1, ih2⟩ := ih
-      constructor; intros w p
-      case left =>
-        rw [split, partition_eq_filter_filter] at p
-        simp at p
-        rcases p with h1 | h2
-        case inl => apply le_of_eq h1
-        case inr => apply And.right h2
-      case intro.right =>
-        intro y
-        rw [split, partition_eq_filter_filter]
-        simp
+-- theorem split_partition {A : Type} [LinearOrder A] (x : A) (l : List A) :
+--     let (left, right) := split x l
+--     (∀ y ∈ left, y ≤ x) ∧ (∀ y ∈ right, x < y) := by
+--     unfold split
+--     rw [partition_eq_filter_filter]
+--     constructor <;> simp
 
 @[reducible]
 def merge [LE A] [DecidableLE A] (a b : List A) : List A := match a, b with
@@ -399,3 +373,120 @@ def merge_sorted [LinearOrder A] (sa : Sorted a) (sb : Sorted b) : Sorted (merge
             cases sb
             assumption
             assumption
+
+lemma merge_perm [LinearOrder A] (sa : Sorted a) (sb : Sorted b)
+   : (a <> b) ~ (merge a b) := by
+   induction a generalizing b
+   case nil =>
+     unfold merge
+     simp
+   case cons x xs ih =>
+     induction b
+     case nil =>
+       simp
+       unfold merge
+       apply Perm.refl
+     case cons y ys ih2 =>
+       unfold merge
+       split
+       case isTrue x_le_y =>
+         specialize ih (sortedTail sa) sb
+         simp [cat, ih]
+       case isFalse x_ge_y =>
+         specialize ih2 (sortedTail sb)
+         calc (x :: xs <> y :: ys)
+          _ ~ y :: (x :: xs <> ys) := by apply perm_middle
+         apply Perm.cons
+         apply ih2
+
+theorem filter_size (f : A -> Bool) (xs : List A)
+  : sizeOf (filter f xs) ≤ sizeOf xs := by
+  induction xs
+  case nil => simp
+  case cons y ys ih =>
+    unfold filter
+    split
+    case h_1 =>
+      simp
+      apply ih
+    case h_2 =>
+      simp
+      calc sizeOf (filter f ys)
+       _ ≤ sizeOf ys := ih
+       _ ≤ 1 + sizeOf ys := by apply Nat.le_add_left
+
+theorem split_size [LinearOrder A] (x : A) (xs : List A) :
+  let (l, r) := split x xs
+  (sizeOf l ≤ sizeOf xs ∧ sizeOf r ≤ sizeOf xs) := by
+  unfold split
+  rw [partition_eq_filter_filter]
+  simp
+  constructor <;> apply filter_size
+
+def mergeSort [LinearOrder A] (d : List A) : List A :=
+  match d with
+   | [] => []
+   | (x :: xs) =>
+        match _eq : split x xs with
+         | (l, r) => merge (mergeSort l) (x :: (mergeSort r))
+        decreasing_by
+        iterate 2 {
+        have prf2 := split_size x xs
+        rw [_eq] at prf2
+        simp
+        omega
+        }
+
+theorem mergeSort_perm [LinearOrder A] (d : List A) :
+  d ~ mergeSort d := by sorry
+
+theorem perm_mem (p : a ~ b) (m : x ∈ a) : x ∈ b := by
+  induction p
+  assumption
+  case cons y l1 l2 p ih =>
+   rcases m
+   simp
+   next h1 =>
+     right
+     apply ih
+     assumption
+  case swap x1 x2 l3 =>
+    rcases m
+    right
+    apply Mem.head
+    case tail m =>
+      rcases m
+      apply Mem.head
+      case tail m => right; right; assumption
+  case trans h2 h3 =>
+    apply h3
+    apply h2
+    assumption
+
+theorem mergeSort_sorted [LinearOrder A] (d : List A)
+  : Sorted (mergeSort d) := by
+  apply WellFounded.induction sizeOfWFRel.wf d
+  intros a ih
+  rw [WellFoundedRelation.rel] at ih
+  unfold mergeSort
+  cases a; simp
+  case cons x xs =>
+    simp
+    unfold split
+    rw [partition_eq_filter_filter]
+    simp
+    have h1 : Sorted (mergeSort (filter (fun y ↦ decide (y ≤ x)) xs)) := by
+      apply ih
+      have s1 : sizeOf (filter (fun y ↦ decide (y ≤ x)) xs) < sizeOf (x :: xs) :=
+        calc sizeOf (filter (fun y ↦ decide (y ≤ x)) xs)
+          _ ≤ sizeOf xs := by apply filter_size
+          _ < sizeOf (x :: xs) := by simp
+      apply s1
+    have h2 : Sorted (x :: mergeSort (filter (not ∘ fun y ↦ decide (y ≤ x)) xs)) := by
+
+         -- TODO use perm
+         -- mem_filter
+         sorry
+    apply merge_sorted
+    assumption
+    assumption
