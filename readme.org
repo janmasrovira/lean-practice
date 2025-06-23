@@ -1,1 +1,6 @@
 #+title: Lean4 playground
+* Readme
+To typecheck run:
+#+begin_example
+lake build
+#+end_example
